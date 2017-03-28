@@ -1,0 +1,2 @@
+# binaryvisualizerjs
+Visualize binary data
