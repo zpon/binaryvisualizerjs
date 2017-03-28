@@ -1,10 +1,10 @@
 # binaryvisualizerjs
 Visualize binary data
 
-##Build
-```duo js/script.js```
+## Build
+    duo js/script.js
 
-##Types
+## Types
 
     block - A wrapper containing a number of child elements
     value - An element containing a value
