@@ -1,0 +1,81 @@
+.content {
+    font-family: monospace;
+    word-wrap: break-word;
+    float: left;
+}
+
+#parsed_content {
+    width: 400px;
+    min-height: 100px;
+    max-height: 500px;
+    overflow: auto;
+    position: fixed;
+    border: 1px solid black;
+    right: 10px;
+}
+
+.mono {
+    font-family: monospace;
+}
+
+pre {
+    /* css-3 */
+    white-space: pre-wrap;
+    /* Mozilla, since 1999 */
+    white-space: -moz-pre-wrap;
+    /* Opera 4-6 */
+    white-space: -pre-wrap;
+    /* Opera 7 */
+    white-space: -o-pre-wrap;
+    /* Internet Explorer 5.5+ */
+    word-wrap: break-word;
+}
+
+#string_content {
+    padding-left: 10px;
+    border-left: 1px solid black;
+}
+
+#hex_content {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.hex_line, .string_line, .char_line {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.hex_byte_element {
+    padding-left: 3px;
+    padding-right: 3px;
+    /*border: 1px solid white;*/
+}
+
+.hex_byte_element_parsed_left {
+    border-left: 1px solid black;
+    padding-left: 2px;
+}
+
+.hex_byte_element_parsed_right {
+    border-right: 1px solid black;
+    padding-right: 2px;
+}
+
+.hex_byte_element_parsed {
+    border-top: 1px solid black;
+    border-bottom: 1px solid black;
+}
+
+#offset {
+    background: lightgray;
+    padding-right: 10px;
+    padding-left: 5px;
+    border-right: 1px solid black;
+}
+
+#offset, #hex_content, #string_content {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    margin-bottom: 5px;
+}
