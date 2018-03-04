@@ -99,69 +99,150 @@ $(function () {
         renderData: [],
         schema: null
     };
+    var selectedElement = null;
+    let enableDebugLog = false;
 
     $('#content_wrapper').on('click', '.hex_byte_element_parsed', function () {
-        var data = context.renderData[$(this).data('render-id')];
+        if (selectedElement != null) {
+            let prevDataId = selectedElement.data('render-id');
+            let data = context.renderData[prevDataId];
+            for (var i = data.begin; i <= data.end; i++) {
+                $("#hex_byte_" + i).removeClass("selected_element");
+            }
+        }
+        var dataId = $(this).data('render-id');
+        selectedElement = $(this);
+        let data = context.renderData[dataId];
+        for (var i = data.begin; i <= data.end; i++) {
+            $("#hex_byte_" + i).addClass("selected_element");
+        }
         console.log(data);
-        var schemaElement = ptr.get(context.schema, data.path);
+        let schemaElement = ptr.get(context.schema, data.path);
         console.log(schemaElement);
         $("#parsed_content").html("Begin: <span class=\"mono\">" + data.begin + "</span><br/>" +
             "End: <span class=\"mono\">" + data.end + "</span><br/>" +
-            "Data: <span class=\"mono\">" + data.data + "</span></br>" +
+            "Data: <pre>" + data.data + "</pre>" +
             "Schema: <pre>" + JSON.stringify(schemaElement)) + "</pre>";
     });
 
+    let readProgressPct = 0;
+    let parseProgressPct = 0;
+    var bufferStrOffset;
+    var bufferStrHex;
+    var bufferStrString;
     $('#input').change(function () {
         var selectedFile = $('#input')[0].files;
+        // selectedElement.nextUntil(".hex_byte_element[data-render-id!=" + dataId + "]").addClass("selected_element");
+        // selectedElement.prevUntil(".hex_byte_element[data-render-id!=" + dataId + "]").addClass("selected_element");
+        // selectedElement.addClass("selected_element");
+        // $(".hex_byte_element[data-render-id=" + dataId + "]").addClass("selected_element");
         var reader = new FileReader();
         reader.onload = function (e) {
             byteArray = new Uint8Array(reader.result.slice(0, reader.result.byteLength));
+            var worker = new Worker("js/worker.js");
+            worker.onmessage = function (e) {
+                // console.log(e.data);
+                if (e.data.hasOwnProperty('progress')) {
+                    readProgressPct = e.data['progress'];
+                    requestAnimationFrame(updateProgress);
+                } else if (e.data.hasOwnProperty('offset')) {
+                    $('#offset')[0].innerHTML = e.data['offset'];
+                    $('#hex_content')[0].innerHTML = e.data['hex_content'];
+                    $('#string_content')[0].innerHTML = e.data['string_content'];
+                    readProgressPct = 100;
+                    requestAnimationFrame(updateProgress);
+                    testSchema(executionContext);
+                }
+            }
+            worker.postMessage({
+                'byteArray': byteArray,
+                'elementsPerLine': elementsPerLine,
+                'byteLength': reader.result.byteLength
+            });
             console.log('File length: ' + reader.result.byteLength);
 
-            lastLineNumberString = (byteArray.byteLength - byteArray.byteLength % elementsPerLine).toString(16);
+            // lastLineNumberString = (byteArray.byteLength - byteArray.byteLength % elementsPerLine).toString(16);
 
-            var bufferStrOffset = '<div class="string_line" id="offset_0">' + lineFormatter(0);
-            var bufferStrHex = '<div class="hex_line" id="hex_0">';
-            var bufferStrString = '<div class="char_line" id="char_0">';
-            var progress = 0;
-            var progressPercent = reader.result.byteLength / 100;
+            // bufferStrOffset = '<div class="string_line" id="offset_0">' + lineFormatter(0);
+            // bufferStrHex = '<div class="hex_line" id="hex_0">';
+            // bufferStrString = '<div class="char_line" id="char_0">';
+            // var progress = 0;
 
-            byteArray = new Uint8Array(reader.result.slice(0, reader.result.byteLength));
-            if (byteArray.byteLength == 0) {
-                return;
-            }
 
-            for (var j = 0; j < byteArray.byteLength; j++) {
-                if (j % elementsPerLine === 0 && j !== 0) {
-                    bufferStrOffset += '</div><div class="string_line" id="offset_' + (j / elementsPerLine) + '">' + lineFormatter(j);
-                    bufferStrHex += '</div><div class="hex_line" id="hex_' + (j / elementsPerLine) + '">';
-                    bufferStrString += '</div><div class="char_line" id="char_' + (j / elementsPerLine) + '">';
-                }
+            // byteArray = new Uint8Array(reader.result.slice(0, reader.result.byteLength));
+            // if (byteArray.byteLength == 0) {
+            //     return;
+            // }
+            // let progressPercent = reader.result.byteLength / 100;
 
-                var hex = toHex(byteArray[j]);
-                bufferStrHex += "<span class=\"hex_byte_element\" id=\"hex_byte_" + j + "\">" + hex + '</span>';
-
-                var char = toChar(byteArray[j]);
-                bufferStrString += "<span id=\"char_byte_" + j + "\">" + char + "</span>";
-
-                progress++;
-                if (progress >= progressPercent) {
-                    $('#progress').text('Progress: ' + (j / reader.result.byteLength) * 100);
-                    progress = 0;
-                }
-            }
-            bufferStrOffset += '</div>';
-            bufferStrString += '</div>';
-            bufferStrHex += '</div>';
-
-            $('#offset')[0].innerHTML = bufferStrOffset;
-            $('#hex_content')[0].innerHTML = bufferStrHex;
-            $('#string_content')[0].innerHTML = bufferStrString;
-
-            testSchema();
+            /*
+                        setTimeout(function() {
+                            requestAnimationFrame(updateProgress);
+                            handleInput(byteArray, 0, progressPercent, reader);
+                        }, 0);
+            */
         };
         reader.readAsArrayBuffer(new Blob(selectedFile));
     });
+
+    // function handleInput(byteArray, position, progressPercent, reader) {
+    //     let progress = 0;
+    //     for (var j = position; j < byteArray.byteLength; j++) {
+    //         if (j % elementsPerLine === 0 && j !== 0) {
+    //             bufferStrOffset += '</div><div class="string_line" id="offset_' + (j / elementsPerLine) + '">' + lineFormatter(j);
+    //             bufferStrHex += '</div><div class="hex_line" id="hex_' + (j / elementsPerLine) + '">';
+    //             bufferStrString += '</div><div class="char_line" id="char_' + (j / elementsPerLine) + '">';
+    //         }
+
+    //         var hex = toHex(byteArray[j]);
+    //         bufferStrHex += "<span class=\"hex_byte_element\" id=\"hex_byte_" + j + "\">" + hex + '</span>';
+
+    //         var char = toChar(byteArray[j]);
+    //         bufferStrString += "<span id=\"char_byte_" + j + "\">" + char + "</span>";
+
+    //         progress++;
+    //         if (progress >= progressPercent) {
+    //             progressPct = (j / reader.result.byteLength) * 100;
+    //             setTimeout(function () {
+    //                 requestAnimationFrame(updateProgress);
+    //                 handleInput(byteArray, j + 1, progressPercent, reader);
+    //             }, 0);
+    //             return;
+    //             // $('#progress').text('Progress: ' + (j / reader.result.byteLength) * 100);
+    //             // $('#loading').css('width', (j /  + '%');
+
+
+    //         }
+    //     }
+    //     bufferStrOffset += '</div>';
+    //     bufferStrString += '</div>';
+    //     bufferStrHex += '</div>';
+
+    //     $('#offset')[0].innerHTML = bufferStrOffset;
+    //     $('#hex_content')[0].innerHTML = bufferStrHex;
+    //     $('#string_content')[0].innerHTML = bufferStrString;
+
+    //     console.log("here0");
+
+    //     progressPct = 100;
+    //     requestAnimationFrame(updateProgress);
+    //     setTimeout(function () {
+    //         console.log("here1");
+    //         testSchema(executionContext);
+    //         console.log("here2");
+    //     }, 1000);
+    // }
+
+    function updateProgress() {
+        console.log("P: " + readProgressPct + " " + parseProgressPct);
+        if (parseProgressPct == 0) {
+            $('#progress').text('Read progress: ' + (readProgressPct + parseProgressPct) / 2);
+            $('#loading').css('width', (readProgressPct + parseProgressPct) / 2 + '%');
+        } else {
+            $('#progress').text('Parse progress: ' + (readProgressPct + parseProgressPct) / 2);
+            $('#loading').css('width', (readProgressPct + parseProgressPct) / 2 + '%');
+        }
+    }
 
     function lineFormatter(i) {
         var currentLineString = i.toString(16);
@@ -178,8 +259,7 @@ $(function () {
             char = String.fromCharCode(i);
             if (char === '<') {
                 char = '&lt;';
-            }
-            else if (char === '>') {
+            } else if (char === '>') {
                 char = '&gt;';
             }
         }
@@ -255,21 +335,30 @@ $(function () {
         return false;
     }
 
-    function testSchema() {
+    var executionContext = {
+        position: 0,
+        componentPosition: 0,
+        elementPosition: 0
+    };
+
+    function testSchema(executionContext) {
         'use strict';
-        var position = 0;
         context.schema = getSchema();
         console.log(context.schema.name);
 
+        let progress = 0;
+        let bytesPerPercent = byteArray.length / 100;
+
         var componentList = context.schema.components;
-        for (var ci in componentList) {
+        for (executionContext.componentPosition = 0; executionContext.componentPosition < componentList.length; executionContext.componentPosition++) {
+            var ci = executionContext.componentPosition;
             var component = componentList[ci];
             console.log('Component type: ' + component.type);
 
             if (component.type == 'block') {
 
                 let maxNumberOfElementsToParse = -1; // -1 means disabled
-                while (position < byteArray.length) {
+                while (executionContext.position < byteArray.length * 8) {
                     if (maxNumberOfElementsToParse == 0) {
                         return;
                     }
@@ -287,47 +376,51 @@ $(function () {
                     }
 
                     var dataStructure = {};
-                    for (var ei in component.elements) {
-                        var element = component.elements[ei];
+                    for (executionContext.elementPosition = 0; executionContext.elementPosition < component.elements.length; executionContext.elementPosition++) {
+                        // for (var ei in component.elements) {
+                        var element = component.elements[executionContext.elementPosition];
 
                         var data = null;
                         if (element.type == 'value') {
-                            console.assert(position % 8 == 0, 'Handle position that does not allign with 8'); // TODO
-                            var valueArray = byteArray.slice(position / 8, position / 8 + element.size / 8); // 8 bits per element
+                            console.assert(executionContext.position % 8 == 0, 'Handle position that does not allign with 8'); // TODO
+                            var valueArray = byteArray.slice(executionContext.position / 8, executionContext.position / 8 + element.size / 8); // 8 bits per element
+                            // var valueArray = new DataView(byteArray.buffer, executionContext.position / 8, executionContext.position / 8 + element.size / 8);
                             var prettyTextValue = arrayToChars(valueArray);
                             var prettyHexValue = arrayToHexs(valueArray);
 
-                            console.log('Value' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') + ': ' +
-                                prettyHexValue + ' (' + prettyTextValue + ') at position: ' + position);
+                            logHandler('Value' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') + ': ' +
+                                prettyHexValue + ' (' + prettyTextValue + ') at position: ' + executionContext.position);
 
                             if (element.hasOwnProperty('expectedTextValue')) {
-                                console.log(' - Expected: ' + element.expectedTextValue);
-                                console.assert(element.expectedTextValue === prettyTextValue, 'Value did not match expected content at position: ' + position);
-                            }
-                            else if (element.hasOwnProperty('expectedUIntValues')) {
+                                logHandler(' - Expected: ' + element.expectedTextValue);
+                                console.assert(element.expectedTextValue === prettyTextValue, 'Value did not match expected content at position: ' + executionContext.position);
+                            } else if (element.hasOwnProperty('expectedUIntValues')) {
                                 var expectedUIntValues = element.expectedUIntValues.join(', ');
-                                console.log(' - Expected: ' + expectedUIntValues);
-                                console.assert(arrayContains(element.expectedUIntValues, valueArray), 'Value did not match expected content at position: ' + position);
+                                logHandler(' - Expected: ' + expectedUIntValues);
+                                console.assert(arrayContains(element.expectedUIntValues, valueArray), 'Value did not match expected content at position: ' + executionContext.position);
                             }
 
                             if (element.valueType == 'uint8') {
                                 data = valueArray[0];
-                            }
-                            else if (element.valueType == 'string') {
+                            } else if (element.valueType == 'uint32') {
+                                data = valueArray[0]; // TODO extract all elements and handle endian
+                            } else if (element.valueType == 'string') {
                                 data = prettyTextValue;
-                            }
-                            else if (isDefined(element.valueType)) {
+                            } else if (isDefined(element.valueType)) {
                                 console.assert(false, 'Unknown value type: ' + element.valueType);
+                                data = element.valueType;
+                            } else {
+                                data = prettyHexValue;
                             }
                             if (element.hasOwnProperty('id') && data != null) {
                                 console.assert(element.hasOwnProperty('valueType'));
                                 dataStructure[element.id] = data;
                             }
 
-                            var beginPos = (position / 8);
-                            var endPos = (position / 8 + element.size / 8 - 1);
+                            var beginPos = (executionContext.position / 8);
+                            var endPos = (executionContext.position / 8 + element.size / 8 - 1);
                             context.renderData.push({
-                                path: '/components/' + ci + '/elements/' + ei,
+                                path: '/components/' + executionContext.componentPosition + '/elements/' + executionContext.elementPosition,
                                 begin: beginPos,
                                 end: endPos,
                                 data: data
@@ -338,28 +431,33 @@ $(function () {
                                 $("#hex_byte_" + i).addClass("hex_byte_element_parsed");
                                 $("#hex_byte_" + i).attr('data-render-id', context.renderData.length - 1);
                             }
-                            position += element.size;
-                        }
-                        else if (element.type == 'flags') {
-                            console.assert(position % 8 == 0, 'Handle position that does not allign with 8'); // TODO
-                            var valueArray = byteArray.slice(position / 8, position / 8 + element.size / 8); // 8 bits per element
+                            executionContext.position += element.size;
+                        } else if (element.type == 'flags') {
+                            console.assert(executionContext.position % 8 == 0, 'Handle position that does not allign with 8'); // TODO
+                            var valueArray = byteArray.slice(executionContext.position / 8, executionContext.position / 8 + element.size / 8); // 8 bits per element
                             var prettyTextValue = arrayToChars(valueArray);
                             var prettyHexValue = arrayToHexs(valueArray);
                             var prettyBinary = arrayToBinaryStr(valueArray);
 
-                            console.log('Flags' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') + ': ' +
-                                prettyHexValue + ' (' + prettyTextValue + ') at position: ' + position);
+                            logHandler('Flags' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') + ': ' +
+                                prettyHexValue + ' (' + prettyTextValue + ') at position: ' + executionContext.position);
 
                             // Print flags
+                            data = "";
                             var base = '-'.repeat(element.size);
                             for (var i = 0; i < element.size; i++) {
-                                console.log(" " + replaceChar(base, prettyBinary.charAt(i), i) + " ... " + (element.flagMapping.hasOwnProperty(element.size - i) ? element.flagMapping[element.size - i] : "Unknown"));
+                                var str = replaceChar(base, prettyBinary.charAt(i), i) + " ... " + (element.flagMapping.hasOwnProperty(element.size - i) ? element.flagMapping[element.size - i] : "Unknown");
+                                logHandler(str);
+                                if (data.length > 0) {
+                                    data += "\n";
+                                }
+                                data += str;
                             }
 
-                            let beginPos = (position / 8);
-                            let endPos = (position / 8 + element.size / 8 - 1);
+                            let beginPos = (executionContext.position / 8);
+                            let endPos = (executionContext.position / 8 + element.size / 8 - 1);
                             context.renderData.push({
-                                path: '/components/' + ci + '/elements/' + ei,
+                                path: '/components/' + executionContext.componentPosition + '/elements/' + executionContext.elementPosition,
                                 begin: beginPos,
                                 end: endPos,
                                 data: data
@@ -370,10 +468,9 @@ $(function () {
                                 $("#hex_byte_" + i).addClass("hex_byte_element_parsed");
                                 $("#hex_byte_" + i).attr('data-render-id', context.renderData.length - 1);
                             }
-                            position += element.size;
-                        }
-                        else if (element.type == 'array') {
-                            let beginPos = position / 8;
+                            executionContext.position += element.size;
+                        } else if (element.type == 'array') {
+                            let beginPos = executionContext.position / 8;
                             // Test required elements
                             console.assert(element.hasOwnProperty('elements'));
                             console.assert(element.hasOwnProperty('elementSize'));
@@ -390,11 +487,10 @@ $(function () {
                             if (typeof elementSize === 'number') {
                                 // Value is already a number
                                 console.assert(element.elementSize * elementSizeMultiplier % 8 == 0, "TODO Handle elmeents sizes that does not align with 8");
-                            }
-                            else if (typeof elementSize === 'string') {
+                            } else if (typeof elementSize === 'string') {
+                                logHandler(dataStructure);
                                 elementSize = ptr.get(dataStructure, elementSize);
-                            }
-                            else {
+                            } else {
                                 console.log(false, 'Unknown type of elementSize: ' + typeof elementSize);
                             }
                             if (Array.isArray(elementSize)) {
@@ -407,23 +503,22 @@ $(function () {
                                 valueType = element.valueType;
                             }
 
-                            console.log('Array' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') +
-                                ' number of elements: ' + numberOfElements + ' at position: ' + position);
+                            logHandler('Array' + ((element.hasOwnProperty('name')) ? ' (' + element.name + ')' : '') +
+                                ' number of elements: ' + numberOfElements + ' at position: ' + executionContext.position);
 
                             var content = [];
+                            data = "";
                             for (var i = 0; i < numberOfElements; i++) {
                                 var currentElementSize = 0;
                                 if (typeof elementSize == 'number') {
                                     currentElementSize = elementSize * elementSizeMultiplier;
-                                }
-                                else if (Array.isArray(elementSize)) {
+                                } else if (Array.isArray(elementSize)) {
                                     currentElementSize = elementSize[i] * elementSizeMultiplier;
-                                }
-                                else {
+                                } else {
                                     console.assert(false, 'Unknown type of elementSize: ' + typeof elementSize);
                                 }
                                 console.assert(currentElementSize % 8 == 0, "TODO Handle elmeents sizes that does not align with 8, got value: " + currentElementSize);
-                                var valueArray = byteArray.slice(position / 8, (position / 8) + (currentElementSize / 8));
+                                var valueArray = byteArray.slice(executionContext.position / 8, (executionContext.position / 8) + (currentElementSize / 8));
 
                                 content.push(valueArray);
 
@@ -431,12 +526,20 @@ $(function () {
                                 // TODO print short arrays, i.e. arrays with one value in each element as one line, such as "Content: [x, y, z]"
                                 // TODO print values as hex value
                                 let arrLength = content[content.length - 1].length;
-                                let contentStr = (arrLength > 10
-                                    ? content[content.length - 1].slice(0, 3).join(',') + " ... " + (content[content.length - 1].slice(arrLength - 3, arrLength).join(','))
-                                    : content[content.length - 1].join(','));
-                                console.log(' - Content (' + arrLength + '): ' + contentStr);
+                                if (enableDebugLog) {
+                                    // Don't format these strings unless debug is enabled
+                                    let contentStr = (arrLength > 10 ?
+                                        content[content.length - 1].slice(0, 3).join(',') + " ... " + (content[content.length - 1].slice(arrLength - 3, arrLength).join(',')) :
+                                        content[content.length - 1].join(','));
+                                    logHandler(' - Content (' + arrLength + '): ' + contentStr);
+                                }
+                                if (data.length > 0) {
+                                    data += "\n";
+                                }
+                                data += "Size: " + arrLength + ", " +
+                                    "elements: [" + content[content.length - 1].join(", ") + "]";
 
-                                position += currentElementSize;
+                                executionContext.position += currentElementSize;
                             }
 
                             if (element.hasOwnProperty('id')) {
@@ -444,9 +547,9 @@ $(function () {
                             }
 
 
-                            var endPos = position / 8 - 1;//(position / 8 + element.size / 8 - 1);
+                            var endPos = executionContext.position / 8 - 1; //(position / 8 + element.size / 8 - 1);
                             context.renderData.push({
-                                path: '/components/' + ci + '/elements/' + ei,
+                                path: '/components/' + executionContext.componentPosition + '/elements/' + executionContext.elementPosition,
                                 begin: beginPos,
                                 end: endPos,
                                 data: data
@@ -458,97 +561,114 @@ $(function () {
                                 $("#hex_byte_" + i).attr('data-render-id', context.renderData.length - 1);
                             }
 
-                        }
-                        else {
+                        } else {
                             console.assert(false, 'Unknown type: ' + element.type);
                         }
+
+                    } // end for elements
+                    if (executionContext.position - progress > bytesPerPercent * 8) {
+                        console.log("Zzzzz " + executionContext.position);
+                        setTimeout(function () {
+                            console.assert(executionContext.position <= byteArray.length * 8);
+                            parseProgressPct = (executionContext.position / (byteArray.length * 8)) * 100;
+                            console.log("Zzzzz " + parseProgressPct);
+                            requestAnimationFrame(updateProgress);
+                            progress = executionContext.position;
+                            testSchema(executionContext);
+                        }, 0);
+                        return;
                     }
                 }
-            }
-            else {
+                parseProgressPct = 100;
+                requestAnimationFrame(updateProgress);
+            } else {
                 // TODO Handle other component types
                 console.assert(false, component.type);
             }
         }
     }
 
+    function logHandler(message) {
+        if (enableDebugLog) {
+            console.log(message);
+        }
+    }
+
     function getSchema() {
         var schema = {
             name: 'OGG',
-            components: [
-                {
-                    type: 'block',
-                    position: 'relative',
-                    index: 0,
-                    elements: [
-                        {
-                            name: 'Capture pattern',
-                            type: 'value',
-                            expectedTextValue: 'OggS',
-                            valueType: 'string',
-                            size: 32
-                        },
-                        {
-                            name: 'Version',
-                            type: 'value',
-                            size: 8
-                        },
-                        {
-                            name: 'Header type',
-                            type: 'flags',
-                            size: 8,
-                            flagMapping: {
-                                1: 'Continuation',
-                                2: 'BOS',
-                                3: 'EOS'
-                            }
-                        },
-                        {
-                            name: 'Granule position',
-                            type: 'value',
-                            size: 64
-                        },
-                        {
-                            name: 'Bistream serial number',
-                            type: 'value',
-                            size: 32
-                        },
-                        {
-                            name: 'Page sequence number',
-                            type: 'value',
-                            size: 32
-                        },
-                        {
-                            name: 'Checksum',
-                            type: 'value',
-                            size: 32
-                        },
-                        {
-                            id: 'page_segments',
-                            name: 'Page segments',
-                            type: 'value',
-                            size: 8,
-                            valueType: 'uint8'
-                        },
-                        {
-                            id: 'segment_table',
-                            name: 'Segment table',
-                            type: 'array',
-                            elements: '/page_segments',
-                            elementSize: 8,
-                            valueType: 'uint8'
-                        },
-                        {
-                            id: 'packet_table',
-                            name: 'Packet table',
-                            type: 'array',
-                            elements: '/page_segments',
-                            elementSize: '/segment_table',
-                            elementSizeMultiplier: 8
+            components: [{
+                type: 'block',
+                position: 'relative',
+                index: 0,
+                elements: [{
+                        name: 'Capture pattern',
+                        type: 'value',
+                        expectedTextValue: 'OggS',
+                        valueType: 'string',
+                        size: 32
+                    },
+                    {
+                        name: 'Version',
+                        type: 'value',
+                        size: 8
+                    },
+                    {
+                        name: 'Header type',
+                        type: 'flags',
+                        size: 8,
+                        flagMapping: {
+                            1: 'Continuation',
+                            2: 'BOS',
+                            3: 'EOS'
                         }
-                    ]
-                }
-            ]
+                    },
+                    {
+                        name: 'Granule position',
+                        type: 'value',
+                        size: 64
+                    },
+                    {
+                        name: 'Bistream serial number',
+                        type: 'value',
+                        size: 32
+                    },
+                    {
+                        name: 'Page sequence number',
+                        type: 'value',
+                        size: 32,
+                        valueType: 'uint32'
+                    },
+                    {
+                        name: 'Checksum',
+                        type: 'value',
+                        size: 32
+                    },
+                    {
+                        id: 'page_segments',
+                        name: 'Page segments',
+                        type: 'value',
+                        size: 8,
+                        valueType: 'uint8'
+                    },
+                    {
+                        id: 'segment_table',
+                        name: 'Segment table',
+                        type: 'array',
+                        elements: '/page_segments',
+                        elementSize: 8,
+                        valueType: 'uint8'
+                    },
+                    {
+                        id: 'packet_table',
+                        name: 'Packet table',
+                        type: 'array',
+                        elements: '/page_segments',
+                        elementSize: '/segment_table',
+                        elementSizeMultiplier: 8
+                    }
+                ]
+            }]
         }
 
         return schema;
@@ -556,11 +676,18 @@ $(function () {
 });
 }, {"flitbit/json-ptr":2}],
 2: [function(require, module, exports) {
-'use strict';
-
-(function() {
-  var root = this; // either the module or the window (in a browser)
-  var savedJsonPointer = root.JsonPointer;
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) { // eslint-disable-line no-undef
+    define([], factory);// eslint-disable-line no-undef
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.returnExports = factory();
+  }
+  // eslint-disable-next-line no-undef
+}(typeof self !== 'undefined' ? self : this, function () {
+  var root = this;
+  var $savedJsonPointer = this.JsonPointer;
 
   function replace(str, find, repl) {
     // modified from http://jsperf.com/javascript-replace-all/10
@@ -680,11 +807,14 @@ $(function () {
   function toArrayIndexReference(arr, idx) {
     var len = idx.length;
     var cursor = 0;
-    if (len === 0 || len > 1 && idx[0] === '0') {
-      return -1;
-    }
     if (len === 1 && idx[0] === '-') {
+      if (!Array.isArray(arr)) {
+        return 0;
+      }
       return arr.length;
+    }
+    if (len === 0 || len > 1 && idx[0] === '0' || !isFinite(idx)) {
+      return -1;
     }
 
     while (++cursor < len) {
@@ -734,7 +864,7 @@ $(function () {
     var cursor;
     var step;
     var p;
-    var nonexistent = undefined;
+    var nonexistent;
     if (typeof target !== 'undefined') {
       it = target;
       len = path.length;
@@ -763,20 +893,20 @@ $(function () {
   }
 
   function compilePointerDereference(path) {
-    let body = `if (typeof(obj) !== 'undefined'`;
+    var body = 'if (typeof(obj) !== \'undefined\'';
     if (path.length === 0) {
-      return function(root) {
-        return root;
+      return function (it) {
+        return it;
       };
     }
-    body = path.reduce((body, p, i) => {
-      return `${body} &&
-    typeof((obj = obj['${replace(path[i], '\\', '\\\\')}'])) !== 'undefined'`;
-    }, `if (typeof(obj) !== 'undefined'`);
-    body = `${body}) {
-  return obj;
-}`;
-    return new Function(['obj'], body); // eslint-disable-line no-new-func
+    // eslint-disable-next-line
+    body = path.reduce(function (body, p, i) {
+      return body + ' && \n\ttypeof((obj = obj[\'' +
+        replace(path[i], '\\', '\\\\') + '\'])) !== \'undefined\'';
+    }, 'if (typeof(obj) !== \'undefined\'');
+    body = body + ') {\n\treturn obj;\n }';
+    // eslint-disable-next-line no-new-func
+    return new Function(['obj'], body);
   }
 
   function setValueAtPath(target, val, path, force) {
@@ -787,12 +917,12 @@ $(function () {
     var step;
     var p;
     var rem;
-    var nonexistent = undefined;
+    var nonexistent;
     if (path.length === 0) {
       throw new Error('Cannot set the root object; assign it directly.');
     }
     if (typeof target === 'undefined') {
-      throw TypeError('Cannot set values on undefined');
+      throw new TypeError('Cannot set values on undefined');
     }
     it = target;
     len = path.length;
@@ -811,8 +941,12 @@ $(function () {
             }
             it = it[p];
           } else if (it.length === p) {
-            it.push(val);
-            return nonexistent;
+            if (cursor === end) {
+              it.push(val);
+              return nonexistent;
+            } else if (force) {
+              it = it[p] = {};
+            }
           }
         } else {
           if (typeof it[step] === 'undefined') {
@@ -820,6 +954,11 @@ $(function () {
               if (cursor === end) {
                 it[step] = val;
                 return nonexistent;
+              }
+              // if the next step is an array index, this step should be an array.
+              if (toArrayIndexReference(it[step], path[cursor + 1]) !== -1) {
+                it = it[step] = [];
+                continue;
               }
               it = it[step] = {};
               continue;
@@ -846,67 +985,95 @@ $(function () {
     return (looksLikeFragment(ptr)) ? decodeUriFragmentIdentifier : decodePointer;
   }
 
-  let $path = Symbol();
-  let $orig = Symbol();
-  let $pointer = Symbol();
-  let $fragmentId = Symbol();
-
-  class JsonPointer {
-
-    constructor(ptr) {
-      this[$orig] = ptr;
-      this[$path] = (Array.isArray(ptr)) ? ptr : pickDecoder(ptr)(ptr);
-      Object.defineProperty(this, 'get', {
+  function JsonPointer(ptr) {
+    // decode if necessary, make immutable.
+    var localPath = (Array.isArray(ptr)) ?
+      ptr.slice(0) :
+      ptr = pickDecoder(ptr)(ptr);
+    var $original = (Array.isArray(ptr)) ? encodePointer(localPath) : ptr;
+    var $pointer;
+    var $fragmentId;
+    var $compiledGetter = compilePointerDereference(localPath);
+    Object.defineProperties(this, {
+      get: {
         enumerable: true,
-        value: compilePointerDereference(this.path)
-      });
-    }
-
-    get path() {
-      return this[$path];
-    }
-
-    get pointer() {
-      if (!this[$pointer]) {
-        this[$pointer] = encodePointer(this.path);
+        value: $compiledGetter
+      },
+      set: {
+        enumerable: true,
+        value: function (target, value, force) {
+          return setValueAtPath(target, value, localPath, force);
+        }
+      },
+      has: {
+        enumerable: true,
+        value: function (target) {
+          return typeof ($compiledGetter(target)) !== 'undefined';
+        }
+      },
+      path: {
+        enumerable: true,
+        get: function () {
+          return localPath.slice(0);
+        }
+      },
+      pointer: {
+        enumerable: true,
+        get: function () {
+          if (!$pointer) {
+            $pointer = encodePointer(localPath);
+          }
+          return $pointer;
+        }
+      },
+      uriFragmentIdentifier: {
+        enumerable: true,
+        get: function () {
+          if (!$fragmentId) {
+            $fragmentId = encodeUriFragmentIdentifier(localPath);
+          }
+          return $fragmentId;
+        }
+      },
+      toString: {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: function () {
+          return $original;
+        }
       }
-      return this[$pointer];
-    }
-
-    get uriFragmentIdentifier() {
-      if (!this[$fragmentId]) {
-        this[$fragmentId] = encodeUriFragmentIdentifier(this.path);
-      }
-      return this[$fragmentId];
-    }
-
-    has(target) {
-      return typeof(this.get(target)) != 'undefined';
-    }
-
+    });
   }
 
-  class JsonReference {
+  function JsonReference(pointer) {
+    var localPtr = (typeof (pointer) === 'string' || Array.isArray(pointer)) ?
+      new JsonPointer(pointer) :
+      pointer;
 
-    constructor(pointer) {
-      this[$pointer] = pointer;
-    }
-
-    get $ref() {
-      return this[$pointer].uriFragmentIdentifier;
-    }
-
-    resolve(target) {
-      return this[$pointer].get(target);
-    }
-
-    toString() {
-      return this.$ref;
-    }
-
+    Object.defineProperties(this, {
+      $ref: {
+        enumerable: true,
+        value: localPtr.uriFragmentIdentifier
+      },
+      resolve: {
+        enumerable: true,
+        value: function (target) {
+          return localPtr.get(target);
+        }
+      },
+      toString: {
+        enumerable: true,
+        writable: true,
+        configurable: true,
+        value: function () {
+          return localPtr.uriFragmentIdentifier;
+        }
+      }
+    });
   }
 
-  JsonReference.isReference = function(obj) {
+  JsonReference.isReference = function (obj) {
     return obj && obj instanceof JsonReference ||
       (typeof obj.$ref === 'string' &&
         typeof obj.resolve === 'function');
@@ -915,14 +1082,14 @@ $(function () {
   function visit(target, visitor, cycle) {
     var items, i, ilen, j, jlen, it, path, cursor, typeT;
     var distinctObjects;
-    var q = new Array();
+    var q = [];
     var qcursor = 0;
     q.push({
       obj: target,
       path: []
     });
     if (cycle) {
-      distinctObjects = new Map();
+      distinctObjects = Object.create(null);
     }
     visitor(encodePointer([]), target);
     while (qcursor < q.length) {
@@ -936,8 +1103,8 @@ $(function () {
             it = cursor.obj[j];
             path = cursor.path.concat(j);
             if (typeof it === 'object' && it !== null) {
-              if (cycle && distinctObjects.has(it)) {
-                visitor(encodePointer(path), new JsonReference(distinctObjects.get(it)));
+              if (cycle && distinctObjects[it]) {
+                visitor(encodePointer(path), new JsonReference(distinctObjects[it]));
                 continue;
               }
               q.push({
@@ -945,7 +1112,7 @@ $(function () {
                 path: path
               });
               if (cycle) {
-                distinctObjects.set(it, new JsonPointer(encodeUriFragmentIdentifier(path)));
+                distinctObjects[it] = new JsonPointer(encodeUriFragmentIdentifier(path));
               }
             }
             visitor(encodePointer(path), it);
@@ -958,8 +1125,8 @@ $(function () {
             it = cursor.obj[items[i]];
             path = cursor.path.concat(items[i]);
             if (typeof it === 'object' && it !== null) {
-              if (cycle && distinctObjects.has(it)) {
-                visitor(encodePointer(path), new JsonReference(distinctObjects.get(it)));
+              if (cycle && distinctObjects[it]) {
+                visitor(encodePointer(path), new JsonReference(distinctObjects[it]));
                 continue;
               }
               q.push({
@@ -967,7 +1134,7 @@ $(function () {
                 path: path
               });
               if (cycle) {
-                distinctObjects.set(it, new JsonPointer(encodeUriFragmentIdentifier(path)));
+                distinctObjects[it] = new JsonPointer(encodeUriFragmentIdentifier(path));
               }
             }
             visitor(encodePointer(path), it);
@@ -977,40 +1144,32 @@ $(function () {
     }
   }
 
-  JsonPointer.prototype.set = function(target, value, force) {
-    return setValueAtPath(target, value, this.path, force);
-  };
-
-  JsonPointer.prototype.toString = function() {
-    return this.original;
-  };
-
-  JsonPointer.create = function(ptr) {
+  JsonPointer.create = function (ptr) {
     return new JsonPointer(ptr);
   };
 
-  JsonPointer.has = function(target, ptr) {
+  JsonPointer.has = function (target, ptr) {
     return hasValueAtPath(target, pickDecoder(ptr)(ptr));
   };
 
-  JsonPointer.get = function(target, ptr) {
+  JsonPointer.get = function (target, ptr) {
     return getValueAtPath(target, pickDecoder(ptr)(ptr));
   };
 
-  JsonPointer.set = function(target, ptr, val, force) {
+  JsonPointer.set = function (target, ptr, val, force) {
     return setValueAtPath(target, val, pickDecoder(ptr)(ptr), force);
   };
 
-  JsonPointer.list = function(target, fragmentId) {
+  JsonPointer.list = function (target, fragmentId) {
     var res = [];
     var visitor = (fragmentId) ?
-      function(ptr, val) {
+      function (ptr, val) {
         res.push({
           fragmentId: encodeUriFragmentIdentifier(decodePointer(ptr)),
           value: val
         });
       } :
-      function(ptr, val) {
+      function (ptr, val) {
         res.push({
           pointer: ptr,
           value: val
@@ -1020,24 +1179,24 @@ $(function () {
     return res;
   };
 
-  JsonPointer.flatten = function(target, fragmentId) {
+  JsonPointer.flatten = function (target, fragmentId) {
     var res = {};
     var visitor = (fragmentId) ?
-      function(ptr, val) {
+      function (ptr, val) {
         res[encodeUriFragmentIdentifier(decodePointer(ptr))] = val;
       } :
-      function(ptr, val) {
+      function (ptr, val) {
         res[ptr] = val;
       };
     visit(target, visitor);
     return res;
   };
 
-  JsonPointer.map = function(target, fragmentId) {
-    var res = new Map();
+  JsonPointer.map = function (target, fragmentId) {
+    var res = [];
     var visitor = (fragmentId) ?
-      function(ptr, val) {
-        res.set(encodeUriFragmentIdentifier(decodePointer(ptr)), val);
+      function (ptr, val) {
+        res.push({ key: encodeUriFragmentIdentifier(decodePointer(ptr)), value: val });
       } : res.set.bind(res);
     visit(target, visitor);
     return res;
@@ -1045,7 +1204,7 @@ $(function () {
 
   JsonPointer.visit = visit;
 
-  JsonPointer.decode = function(ptr) {
+  JsonPointer.decode = function (ptr) {
     return pickDecoder(ptr)(ptr);
   };
 
@@ -1054,22 +1213,18 @@ $(function () {
   JsonPointer.decodeUriFragmentIdentifier = decodeUriFragmentIdentifier;
   JsonPointer.encodeUriFragmentIdentifier = encodeUriFragmentIdentifier;
 
+  // support ES6 style destructuring...
+  JsonPointer.JsonPointer = JsonPointer;
   JsonPointer.JsonReference = JsonReference;
   JsonPointer.isReference = JsonReference.isReference;
 
-  JsonPointer.noConflict = function() {
-    root.JsonPointer = savedJsonPointer;
+  JsonPointer.noConflict = function () {
+    root.JsonPointer = $savedJsonPointer;
     return JsonPointer;
   };
 
-  if (typeof exports !== 'undefined') {
-    if (typeof module !== 'undefined' && module.exports) {
-      exports = module.exports = JsonPointer;
-    }
-    exports.JsonPointer = JsonPointer;
-  } else {
-    root.JsonPointer = JsonPointer;
-  }
-}).call(Function('return this')()); // eslint-disable-line no-new-func
+  root.JsonPointer = JsonPointer;
+  return JsonPointer;
+}));
 
 }, {}]}, {}, {"1":""})
